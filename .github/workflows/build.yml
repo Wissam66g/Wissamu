@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -15,7 +16,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -78,6 +82,7 @@ jobs:
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
               }
+
               kotlinOptions {
                   jvmTarget = "17"
               }
@@ -178,51 +183,91 @@ jobs:
                       gravity = Gravity.CENTER
                       setPadding(pad, pad, pad, pad)
                   }
+
                   fun lp() = LinearLayout.LayoutParams(
                       LinearLayout.LayoutParams.MATCH_PARENT,
                       LinearLayout.LayoutParams.WRAP_CONTENT
                   ).apply { topMargin = pad / 2 }
 
-                  val test = Switch(this).apply { text = "وضع التجربة (دورة 5 ثواني)"; textSize = 18f }
-                  val vib = Button(this).apply { text = "جرّب الرجّة"; textSize = 22f }
-                  val start = Button(this).apply { text = "ابدأ"; textSize = 24f }
-                  val stop = Button(this).apply { text = "إيقاف"; textSize = 24f }
-                  val status = TextView(this).apply { textSize = 16f; gravity = Gravity.CENTER }
+                  val test = Switch(this).apply {
+                      text = "وضع التجربة (دورة 5 ثواني)"
+                      textSize = 18f
+                  }
+
+                  val vib = Button(this).apply {
+                      text = "جرّب الرجّة"
+                      textSize = 22f
+                  }
+
+                  val start = Button(this).apply {
+                      text = "ابدأ"
+                      textSize = 24f
+                  }
+
+                  val stop = Button(this).apply {
+                      text = "إيقاف"
+                      textSize = 24f
+                  }
+
+                  val status = TextView(this).apply {
+                      textSize = 16f
+                      gravity = Gravity.CENTER
+                  }
+
                   root.addView(test, lp())
                   root.addView(vib, lp())
                   root.addView(start, lp())
                   root.addView(stop, lp())
                   root.addView(status, lp())
+
                   setContentView(root)
 
                   vib.setOnClickListener { shake() }
 
                   start.setOnClickListener {
                       if (!Settings.canDrawOverlays(this)) {
-                          status.text = "فعّل «العرض فوق التطبيقات» ثم ارجع واضغط ابدأ"
-                          startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                              Uri.parse("package:$packageName")))
+                          status.text = "فعّل العرض فوق التطبيقات ثم ارجع واضغط ابدأ"
+                          startActivity(
+                              Intent(
+                                  Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                  Uri.parse("package:$packageName")
+                              )
+                          )
                           return@setOnClickListener
                       }
+
                       if (Build.VERSION.SDK_INT >= 33 &&
                           checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                           status.text = "اسمح بالإشعارات ثم اضغط ابدأ"
-                          requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+                          requestPermissions(
+                              arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1
+                          )
                           return@setOnClickListener
                       }
+
                       val prefs = getSharedPreferences("p", MODE_PRIVATE)
                       val pm = getSystemService(PowerManager::class.java)
-                      if (!pm.isIgnoringBatteryOptimizations(packageName) && !prefs.getBoolean("asked", false)) {
+
+                      if (!pm.isIgnoringBatteryOptimizations(packageName) &&
+                          !prefs.getBoolean("asked", false)) {
                           prefs.edit().putBoolean("asked", true).apply()
                           status.text = "اضغط سماح لتجاهل توفير البطارية ثم اضغط ابدأ"
-                          startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                              Uri.parse("package:$packageName")))
+                          startActivity(
+                              Intent(
+                                  Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                  Uri.parse("package:$packageName")
+                              )
+                          )
                           return@setOnClickListener
                       }
-                      val i = Intent(this, TimerService::class.java).putExtra("test", test.isChecked)
+
+                      val i = Intent(this, TimerService::class.java)
+                          .putExtra("test", test.isChecked)
+
                       startForegroundService(i)
                       status.text = "شغّال ✓ (تقدر تقفل الشاشة)"
                   }
+
                   stop.setOnClickListener {
                       stopService(Intent(this, TimerService::class.java))
                       status.text = "متوقف"
@@ -265,10 +310,14 @@ jobs:
               private var running = false
 
               private val fireR = Runnable { alarm() }
+
               private val cycleR = object : Runnable {
                   override fun run() {
                       if (!running) return
-                      h.postDelayed(fireR, Random.nextInt(1, maxF + 1) * 1000L)
+                      h.postDelayed(
+                          fireR,
+                          Random.nextInt(1, maxF + 1) * 1000L
+                      )
                       h.postDelayed(this, cycleMs)
                   }
               }
@@ -277,43 +326,66 @@ jobs:
 
               override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
                   val test = i?.getBooleanExtra("test", false) ?: false
+
                   cycleMs = if (test) 5_000L else 600_000L
                   maxF = if (test) 4 else 540
 
                   val nm = getSystemService(NotificationManager::class.java)
+
                   nm.createNotificationChannel(
-                      NotificationChannel("t", "Timer", NotificationManager.IMPORTANCE_LOW))
+                      NotificationChannel(
+                          "t",
+                          "Timer",
+                          NotificationManager.IMPORTANCE_LOW
+                      )
+                  )
+
                   val n = Notification.Builder(this, "t")
                       .setContentTitle("المنبه شغال")
                       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                       .setOngoing(true)
                       .build()
+
                   if (Build.VERSION.SDK_INT >= 34)
-                      startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                      startForeground(
+                          1,
+                          n,
+                          ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                      )
                   else startForeground(1, n)
 
                   if (wl == null) {
                       wl = getSystemService(PowerManager::class.java)
-                          .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "randtimer:wl")
+                          .newWakeLock(
+                              PowerManager.PARTIAL_WAKE_LOCK,
+                              "randtimer:wl"
+                          )
                       wl?.acquire()
                   }
+
                   h.removeCallbacksAndMessages(null)
                   running = true
                   h.post(cycleR)
+
                   return START_STICKY
               }
 
               private fun alarm() {
                   shake()
+
                   val km = getSystemService(KeyguardManager::class.java)
                   val pm = getSystemService(PowerManager::class.java)
+
                   val locked = km.isKeyguardLocked || !pm.isInteractive
+
                   if (!locked && Settings.canDrawOverlays(this)) {
                       showOverlay()
                   } else {
                       try {
-                          startActivity(Intent(this, LockScreenActivity::class.java)
-                              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                          startActivity(
+                              Intent(this, LockScreenActivity::class.java)
+                                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                          )
                       } catch (e: Exception) {
                           if (Settings.canDrawOverlays(this)) showOverlay()
                       }
@@ -322,6 +394,7 @@ jobs:
 
               private fun showOverlay() {
                   hide()
+
                   try {
                       val tv = TextView(this).apply {
                           text = ALERT_TEXT
@@ -331,6 +404,7 @@ jobs:
                           setBackgroundColor(Color.parseColor("#C62828"))
                           setOnClickListener { hide() }
                       }
+
                       val p = WindowManager.LayoutParams(
                           WindowManager.LayoutParams.MATCH_PARENT,
                           WindowManager.LayoutParams.MATCH_PARENT,
@@ -340,9 +414,13 @@ jobs:
                               WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                           PixelFormat.OPAQUE
                       )
-                      getSystemService(WindowManager::class.java).addView(tv, p)
+
+                      getSystemService(WindowManager::class.java)
+                          .addView(tv, p)
+
                       overlay = tv
                       h.postDelayed({ hide() }, 30_000L)
+
                   } catch (e: Exception) {
                   }
               }
@@ -388,15 +466,18 @@ jobs:
               @Suppress("DEPRECATION")
               override fun onCreate(b: Bundle?) {
                   super.onCreate(b)
+
                   if (Build.VERSION.SDK_INT >= 27) {
                       setShowWhenLocked(true)
                       setTurnScreenOn(true)
                   }
+
                   window.addFlags(
                       WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                           WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                           WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                   )
+
                   val tv = TextView(this).apply {
                       text = ALERT_TEXT
                       setTextSize(TypedValue.COMPLEX_UNIT_SP, 40f)
@@ -405,6 +486,7 @@ jobs:
                       setBackgroundColor(Color.parseColor("#C62828"))
                       setOnClickListener { finish() }
                   }
+
                   setContentView(tv)
                   h.postDelayed({ finish() }, 30_000L)
               }
